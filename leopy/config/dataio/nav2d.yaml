@@ -20,7 +20,7 @@ dataio:
   start_ds_idx: 0
   start_seq_idx: 0
 
-  load_poses_file: True
+  load_poses_file: False
   save_poses_file: False
 
 measurements:

@@ -29,5 +29,5 @@ def sampler_gaussian(mean, cov, n_samples=1, temp=1.):
 
     # x_samples: num_samples, num_x, dim_x
     x_samples = compute_x_samples(mean, dx_samples)
-
+    
     return x_samples

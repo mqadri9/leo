@@ -46,6 +46,8 @@ def init_theta(params):
     if (params.dataio.dataset_type == "nav2d"):
         if (params.dataio.model_type == "fixed_cov"):
             sigma_noise = params.theta_init.sigma_noise if (params.theta_init.noisy == True) else 0. 
+            #sigma_inv_odom_vals = np.array(params.theta_init.sigma_inv_odom_init) + np.diag(sigma_noise * np.random.randn(3))
+            #sigma_inv_gps_vals = np.array(params.theta_init.sigma_inv_gps_vals) + 0. * np.random.randn(3)
             sigma_inv_odom_vals = np.array(params.theta_init.sigma_inv_odom_vals) + sigma_noise * np.random.randn(3)
             sigma_inv_gps_vals = np.array(params.theta_init.sigma_inv_gps_vals) + 0. * np.random.randn(3)
             theta = ThetaNav2dFixedCov(sigma_inv_odom_vals=sigma_inv_odom_vals,
@@ -141,6 +143,7 @@ class ThetaNav2dFixedCov(nn.Module):
         l2_norm = torch.norm(self.sigma_inv_odom) ** 2 + torch.norm(self.sigma_inv_gps) ** 2
 
         return l2_norm
+
 class ThetaNav2dVaryingCov(nn.Module):
     def __init__(self, sigma_inv_odom0_vals=None, sigma_inv_gps0_vals=None, sigma_inv_odom1_vals=None, sigma_inv_gps1_vals=None):
         super().__init__()
@@ -281,7 +284,6 @@ class ThetaPush2dFixedCovVaryingMean(nn.Module):
 
     def get_sigma_inv(self, factor_name, z=None):
         sigma_inv_val = getattr(self, "sigma_inv_{0}".format(factor_name))
-
         return sigma_inv_val
 
     def tactile_model_output(self, img_feats, params=None):

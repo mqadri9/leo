@@ -5,7 +5,7 @@ from datetime import datetime
 import copy
 from functools import partial
 import pandas as pd
-
+import sys
 import torch
 from torch.autograd import Variable
 import torch.nn as nn
@@ -174,8 +174,9 @@ def optimizer_update(optimizer, output):
     output.backward()
     optimizer.step()
 
-def run(params):
 
+def run(params):
+    test = False
     # figs = vis_utils.init_plots(n_figs=1, interactive=params.optim.show_fig)
     print("[leo_update::run] Using device: {0}".format(device))
     params.dataio.prefix = datetime.now().strftime("%m-%d-%Y-%H-%M-%S")
@@ -220,7 +221,9 @@ def run(params):
     n_data = params.leo.n_data_train
     
     # leo loss optimizer
+
     params_optimize = filter(lambda p: p.requires_grad, theta.parameters())
+
     optimizer = optim.Adam(params_optimize, lr=params.leo.lr, weight_decay=params.leo.lmd)
     if params.leo.lr_scheduler:
         # scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=20, factor=0.5, verbose=True)
@@ -237,7 +240,12 @@ def run(params):
 
     # collect expert trajectories
     x_exp_all = []
-    for data_idx in range(0, n_data):
+    if test:
+        start = 0
+        n_data = start+16
+    else:
+        start = 0 
+    for data_idx in range(start, n_data):
         data = load_dataset(params, data_idx)
 
         params.leo.itr = 0
@@ -274,19 +282,20 @@ def run(params):
         pool = mp.Pool(processes=params.leo.pool_processes)
         optimizer_soln_fn = partial(optimizer_soln, copy.deepcopy(theta), params)
         data_idxs = np.arange(0, n_data)
+
         result_opt = pool.map(optimizer_soln_fn, data_idxs)
         pool.close()
         pool.join()
 
         traj_err_trans_train, traj_err_rot_train = np.zeros((n_data, 1)), np.zeros((n_data, 1))
         df_data_list = []
-        for data_idx in range(0, n_data):
+        for data_idx in range(start, n_data):
 
             # expert, optim trajs for current data idx
-            x_exp = x_exp_all[data_idx]
-            x_opt = result_opt[data_idx][0]
-            data = result_opt[data_idx][1]
-            x_samples = result_opt[data_idx][2]
+            x_exp = x_exp_all[data_idx - start]
+            x_opt = result_opt[data_idx- start][0]
+            data = result_opt[data_idx- start][1]
+            x_samples = result_opt[data_idx- start][2]
 
             x_opt = torch.tensor(x_opt, requires_grad=True,
                                  dtype=torch.float32, device=device)
@@ -300,7 +309,7 @@ def run(params):
 
             # create a common data frame
             if params.logger.enable:
-                df_opt = result_opt[data_idx][3]
+                df_opt = result_opt[data_idx- start][3]
                 df_cost = cost_obj.get_dataframe()
                 df = pd.concat([df_cost, df_opt], axis=1)
 
@@ -312,11 +321,22 @@ def run(params):
             # sum up costs over data idxs
             cost_opt = cost_opt + cost_opt_curr
             cost_exp = cost_exp + cost_exp_curr
-
+            
+            #print(x_exp[0:params.optim.nsteps, :].detach().cpu().numpy())
+            #print("==============================================================")
+            #print(x_opt[0:params.optim.nsteps, :].detach().cpu().numpy())
+            
             # traj errors
-            traj_err_trans_train[data_idx, :], traj_err_rot_train[data_idx, :] = quant_metrics.traj_error(
+            traj_err_trans_train[data_idx- start, :], traj_err_rot_train[data_idx- start, :] = quant_metrics.traj_error(
                 xyh_est=x_opt[0:params.optim.nsteps, :].detach().cpu().numpy(), xyh_gt=x_exp[0:params.optim.nsteps, :].detach().cpu().numpy())
-                    
+            if test:
+                print("============= {} =============".format(data_idx -start ))
+                print(traj_err_trans_train[data_idx- start, :])
+                print(traj_err_rot_train[data_idx- start, :])
+        
+        if test:          
+            sys.exit()
+
         # leo loss
         l2_reg = params.leo.l2_wt * theta.norm()
         loss = 1/n_data * (cost_exp - cost_opt) + l2_reg
@@ -332,6 +352,7 @@ def run(params):
 
         print("[leo_update::train] iteration {0}/{1} VALUE {2}: {3}".format(itr, max_iters-1, name, param.data))
 
+        print(traj_err_trans_train)
         mean_traj_err_trans, mean_traj_err_rot = np.mean(traj_err_trans_train), np.mean(traj_err_rot_train)
         if params.leo.tb_flag:
             tb_writer.add_scalar("loss", loss.item(), itr)

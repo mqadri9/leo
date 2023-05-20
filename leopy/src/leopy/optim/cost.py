@@ -218,6 +218,7 @@ def dict_to_row(data_dict, step):
     data_row.index.name = 'tstep'
 
     return data_row
+    
 class Cost():
     def __init__(self, data, theta, params=None, device=None):
         self.data = data
